@@ -1,0 +1,63 @@
+@HOME@/icloud
+@HOME@/Library/Mobile Documents/**
+@HOME@/Library/CloudStorage/**
+@HOME@/Library/Application Support/iCloud/**
+@HOME@/Library/Application Support/CloudDocs/**
+@HOME@/Library/Application Support/com.apple.ProtectedCloudStorage/**
+@HOME@/Library/Application Scripts/com.apple.CloudDocs.iCloudDriveFileProvider/**
+@HOME@/Library/Application Scripts/group.com.apple.CloudDocs/**
+@HOME@/Library/Application Scripts/group.com.apple.iCloudDrive/**
+@HOME@/Library/Containers/com.apple.CloudDocs.iCloudDriveFileProvider/**
+@HOME@/Library/Containers/com.apple.CloudDocs.iCloudDriveFileProviderManaged/**
+@HOME@/Library/Group Containers/group.com.apple.CloudDocs/**
+@HOME@/Library/Group Containers/group.com.apple.iCloudDrive/**
+@HOME@/Library/Preferences/com.apple.iCloud*
+@HOME@/Library/Preferences/com.apple.SafariCloudHistoryPushAgent.plist
+
+/.DS_Store
+**/.DS_Store
+/.Trash/**
+/.cache/**
+/.node-net-dbg/**
+/.agents/tmp/**
+/.agents/tmp/repos/**
+/.colima
+
+/Library/Caches/**
+/Library/Logs/**
+/Library/WebKit/**
+/Library/Developer/Xcode/DerivedData/**
+/Library/Developer/Xcode/iOS DeviceSupport/**
+/Library/Developer/CoreSimulator/Caches/**
+
+@HOME@/.gnupg/S.*
+@HOME@/.ssh/agent/**
+@HOME@/.config/iterm2/sockets/**
+@HOME@/.config/op/*.sock
+**/*.sock
+
+**/node_modules/**
+**/.pnpm-store/**
+**/.yarn/cache/**
+**/.bun/install/cache/**
+**/.next/cache/**
+**/.nuxt/**
+**/.svelte-kit/**
+**/.parcel-cache/**
+**/.turbo/**
+**/.vite/**
+**/__pycache__/**
+**/.pytest_cache/**
+**/.mypy_cache/**
+**/.ruff_cache/**
+**/.tox/**
+**/.venv/**
+**/venv/**
+**/.gradle/**
+**/.build/**
+**/target/**
+**/.direnv/**
+**/.terraform/**
+**/.dart_tool/**
+**/.eslintcache
+**/.sass-cache/**

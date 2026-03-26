@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MACBACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source "$MACBACK_ROOT/lib/common.sh"
+source "$MACBACK_ROOT/lib/ui.sh"
+source "$MACBACK_ROOT/lib/templates.sh"
+source "$MACBACK_ROOT/lib/filter.sh"
+source "$MACBACK_ROOT/lib/destination.sh"
+source "$MACBACK_ROOT/lib/manifest.sh"
+source "$MACBACK_ROOT/lib/components.sh"
+source "$MACBACK_ROOT/lib/restore.sh"
+
+cmd_help() {
+  print_banner "macback"
+  box \
+    "macback" \
+    "Reusable macOS backup and restore tool." \
+    "" \
+    "Commands:" \
+    "  macback           Interactive TUI" \
+    "  macback backup    Guided backup flow" \
+    "  macback restore   Guided restore flow" \
+    "  macback inspect   Inspect an existing backup" \
+    "  macback doctor    Check and fix backup health" \
+    "  macback help      Show this help"
+}
+
+interactive_menu() {
+  while true; do
+    print_banner "macback"
+    kv "Mode" "Interactive"
+    kv "Primary user" "$MACBACK_PRIMARY_USER"
+    kv "Primary home" "$MACBACK_PRIMARY_HOME"
+    kv "Project root" "$MACBACK_ROOT"
+    echo
+    local choice
+    choice="$(choose_from_lines "macback" \
+      "Backup|Create a new backup run" \
+      "Restore|Restore from an existing backup" \
+      "Inspect|View backup metadata and verification state" \
+      "Doctor|Check and fix backup health and permissions" \
+      "Help|Usage information" \
+      "Quit|Exit the tool")" || { dim "Bye."; return 0; }
+    ui_println ""
+
+    case "$choice" in
+      Backup) run_backup_flow ;;
+      Restore) run_restore_flow ;;
+      Inspect) run_inspect_flow ;;
+      Doctor) run_doctor_flow ;;
+      Help) cmd_help ;;
+      Quit) dim "Bye."; return 0 ;;
+      *) warn "Invalid selection." ;;
+    esac
+
+    echo
+    prompt "Press Enter to continue"
+    ui_read_line
+    echo
+  done
+}
+
+main() {
+  case "${1:-}" in
+    "" ) interactive_menu ;;
+    backup ) run_backup_flow "${2:-}" ;;
+    restore ) run_restore_flow "${2:-}" ;;
+    inspect ) run_inspect_flow "${2:-}" ;;
+    doctor ) run_doctor_flow "${2:-}" ;;
+    help|-h|--help ) cmd_help ;;
+    * )
+      error "Unknown command: $1"
+      cmd_help
+      return 1
+      ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
