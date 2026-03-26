@@ -7,6 +7,7 @@
 - Homebrew backup runs as the detected **primary user**.
 - Homebrew restore runs as the selected **target user**.
 - The destination picker only offers real mounted volumes.
+- The tool refuses stale `/Volumes/...` paths that are not live mounted volumes before creating or resuming a run.
 - The destination picker shows a compact identity line plus enough metadata to distinguish internal vs external mounts.
 - The TUI supports:
   - `↑` / `↓` or `j` / `k` to move
@@ -21,6 +22,11 @@
 ## Backup contract
 
 - The tool picks a destination base path, then either resumes/repairs the latest run or creates a new one.
+- The files component runs `rclone` under a parallel destination guard.
+- The guard records the selected mount root, filesystem device id, and volume UUID when available.
+- While `rclone` runs, the guard checks that destination identity every 2 seconds.
+- If the destination changes or disconnects, the tool stops `rclone` and pauses the backup instead of continuing on a stale path.
+- If the same volume remounts elsewhere and the UUID still matches, the tool can offer to continue the same run on the remounted path.
 - Backup stores:
   - run metadata
   - manifest metadata
@@ -31,6 +37,7 @@
   - optional launchd metadata
   - optional keychain metadata
 - On filesystems without POSIX metadata support, the tool skips `rclone --metadata` and relies on the separate permissions inventory.
+- The destination guard is supervisory, not per-write: writes already in flight may still complete or fail before the guard stops `rclone`.
 
 ## Restore contract
 

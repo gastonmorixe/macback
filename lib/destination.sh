@@ -48,6 +48,85 @@ destination_is_real_mount() {
   [[ "$mount_point" == "$path" ]]
 }
 
+destination_volume_root_for_path() {
+  local path="$1"
+  [[ "$path" == /Volumes/* ]] || return 1
+  local remainder="${path#/Volumes/}"
+  local volume_name="${remainder%%/*}"
+  [[ -n "$volume_name" ]] || return 1
+  printf '/Volumes/%s\n' "$volume_name"
+}
+
+destination_requires_mount_guard() {
+  [[ "$1" == /Volumes/* ]]
+}
+
+destination_path_device_id() {
+  stat -f '%d' "$1" 2>/dev/null
+}
+
+destination_capture_guard() {
+  local path="$1"
+  destination_requires_mount_guard "$path" || return 1
+
+  local guard_path volume_uuid device_id
+  guard_path="$(destination_volume_root_for_path "$path")" || return 1
+  destination_is_real_mount "$guard_path" || return 1
+  volume_uuid="$(destination_diskutil_value "$guard_path" '^ *Volume UUID$')"
+  device_id="$(destination_path_device_id "$guard_path")" || return 1
+  [[ -n "$device_id" ]] || return 1
+  printf '%s\t%s\t%s\n' "$guard_path" "$volume_uuid" "$device_id"
+}
+
+find_destination_by_volume_uuid() {
+  local expected_uuid="$1"
+  [[ -n "$expected_uuid" ]] || return 1
+
+  local volume current_uuid
+  while IFS= read -r volume; do
+    current_uuid="$(destination_diskutil_value "$volume" '^ *Volume UUID$')"
+    [[ "$current_uuid" == "$expected_uuid" ]] || continue
+    printf '%s\n' "$volume"
+    return 0
+  done < <(discover_destination_roots)
+  return 1
+}
+
+destination_matches_guard() {
+  local guard_path="$1"
+  local expected_uuid="$2"
+  local expected_device_id="$3"
+  destination_is_real_mount "$guard_path" || return 1
+
+  local current_device_id current_uuid=""
+  current_device_id="$(destination_path_device_id "$guard_path")" || return 1
+  [[ "$current_device_id" == "$expected_device_id" ]] || return 1
+
+  if [[ -n "$expected_uuid" ]]; then
+    current_uuid="$(destination_diskutil_value "$guard_path" '^ *Volume UUID$')"
+    [[ "$current_uuid" == "$expected_uuid" ]] || return 1
+  fi
+}
+
+destination_assert_write_target() {
+  local path="$1"
+  if ! destination_requires_mount_guard "$path"; then
+    return 0
+  fi
+  destination_capture_guard "$path" >/dev/null || {
+    echo "Destination is not a live mounted volume: $path" >&2
+    return 1
+  }
+}
+
+destination_rebind_to_volume_root() {
+  local path="$1"
+  local new_root="$2"
+  local old_root
+  old_root="$(destination_volume_root_for_path "$path")" || return 1
+  printf '%s%s\n' "$new_root" "${path#$old_root}"
+}
+
 describe_destination() {
   local path="$1"
   local label
@@ -56,7 +135,7 @@ describe_destination() {
   device_node="$(destination_diskutil_value "$path" '^ *Device Node$')"
   fs_type="$(destination_diskutil_value "$path" '^ *Type \(Bundle\)$')"
   if [[ -z "$fs_type" || "$fs_type" == "unknown" ]]; then
-    fs_type="$(mount | grep -F " on $path (" | sed 's/.*(\([^,]*\).*/\1/')"
+    fs_type="$(mount | grep -F " on $path (" | sed 's/.*(\([^,]*\).*/\1/' || true)"
   fi
   location="$(destination_diskutil_value "$path" '^ *Device Location$')"
   protocol="$(destination_diskutil_value "$path" '^ *Protocol$')"
@@ -108,6 +187,7 @@ select_destination_base() {
 
 create_run_dir() {
   local base="$1"
+  destination_assert_write_target "$base" || return 1
   local machine_id
   machine_id="$(detect_machine_id)"
   local run_id
@@ -119,6 +199,7 @@ create_run_dir() {
 
 find_latest_run_dir() {
   local base="$1"
+  destination_assert_write_target "$base" || return 1
   local machine_id
   machine_id="$(detect_machine_id)"
   local machine_root="$base/macback/$machine_id"

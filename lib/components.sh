@@ -106,10 +106,113 @@ build_dynamic_excludes() {
   } >> "$out_file"
 }
 
+watch_destination_guard() {
+  local guard_path="$1"
+  local expected_uuid="$2"
+  local expected_device_id="$3"
+  local command_pid="$4"
+  local failure_file="$5"
+
+  while kill -0 "$command_pid" 2>/dev/null; do
+    if ! destination_matches_guard "$guard_path" "$expected_uuid" "$expected_device_id"; then
+      printf 'Destination volume disappeared or remounted: %s\n' "$guard_path" > "$failure_file"
+      echo "Destination volume disappeared or remounted: $guard_path" >&2
+      kill "$command_pid" 2>/dev/null || true
+      return 0
+    fi
+    sleep 2
+  done
+}
+
+run_with_destination_guard() {
+  local target_path="$1"
+  local failure_file="$2"
+  shift 2
+
+  rm -f "$failure_file"
+  if ! destination_requires_mount_guard "$target_path"; then
+    "$@"
+    return $?
+  fi
+
+  local guard_path expected_uuid expected_device_id
+  IFS=$'\t' read -r guard_path expected_uuid expected_device_id < <(destination_capture_guard "$target_path") || {
+    echo "Destination is not a live mounted volume: $target_path" >&2
+    return 75
+  }
+
+  "$@" &
+  local command_pid=$!
+  watch_destination_guard "$guard_path" "$expected_uuid" "$expected_device_id" "$command_pid" "$failure_file" &
+  local watcher_pid=$!
+
+  wait "$command_pid"
+  local status=$?
+  kill "$watcher_pid" 2>/dev/null || true
+  wait "$watcher_pid" 2>/dev/null || true
+
+  [[ -f "$failure_file" ]] && return 75
+  return "$status"
+}
+
+pause_for_destination_change() {
+  local destination_base="$1"
+  local run_dir="$2"
+  local expected_uuid="$3"
+
+  while true; do
+    echo
+    section_header "Backup paused"
+    kv "Reason" "Destination volume changed or disconnected"
+    kv "Previous target" "$destination_base"
+
+    local detected_root=""
+    if [[ -n "$expected_uuid" ]]; then
+      detected_root="$(find_destination_by_volume_uuid "$expected_uuid" 2>/dev/null || true)"
+    fi
+
+    if [[ -n "$detected_root" ]]; then
+      local rebound_destination rebound_run_dir
+      rebound_destination="$(destination_rebind_to_volume_root "$destination_base" "$detected_root")" || return 1
+      rebound_run_dir="$(destination_rebind_to_volume_root "$run_dir" "$detected_root")" || return 1
+      kv "Detected target" "$rebound_destination"
+      kv "Detected run dir" "$rebound_run_dir"
+      echo
+
+      local choice
+      choice="$(choose_from_lines "Destination changed" \
+        "Continue on detected volume|Use $rebound_destination" \
+        "Retry detection|Check again after reconnecting the drive" \
+        "Stop here|Return to the menu and leave this run paused")" || return 1
+      case "$choice" in
+        Continue\ on\ detected\ volume)
+          printf '%s\t%s\n' "$rebound_destination" "$rebound_run_dir"
+          return 0
+          ;;
+        Retry\ detection) continue ;;
+        Stop\ here) return 1 ;;
+      esac
+    else
+      kv "Detected target" "not available"
+      echo
+
+      local choice
+      choice="$(choose_from_lines "Destination changed" \
+        "Retry detection|Check again after reconnecting the same drive" \
+        "Stop here|Return to the menu and leave this run paused")" || return 1
+      case "$choice" in
+        Retry\ detection) continue ;;
+        Stop\ here) return 1 ;;
+      esac
+    fi
+  done
+}
+
 backup_files_component() {
   local run_dir="$1"
   local include_file="$2"
   local exclude_file="$3"
+  local destination_guard_error="$4"
   local out_dir="$run_dir/components/files"
   local meta_dir="$run_dir/meta"
   local integrity_dir="$meta_dir/integrity"
@@ -130,19 +233,26 @@ backup_files_component() {
   fi
 
   local copy_status=0
-  rclone copy / "$rootfs_dir" "${rclone_flags[@]}" || copy_status=$?
+  run_with_destination_guard "$run_dir" "$destination_guard_error" rclone copy / "$rootfs_dir" "${rclone_flags[@]}" || copy_status=$?
+  if [[ "$copy_status" == "75" ]]; then
+    return 75
+  fi
   printf '%s\n' "$copy_status" > "$integrity_dir/rclone-copy.exit-code"
 
   write_permissions_inventory "$rootfs_dir" "$meta_dir/permissions.tsv"
 
   local check_status=0
-  rclone check / "$rootfs_dir" \
+  run_with_destination_guard "$run_dir" "$destination_guard_error" \
+    rclone check / "$rootfs_dir" \
     --filter-from "$filter_file" \
     --one-way \
     --combined "$integrity_dir/rclone-check.combined" \
     --differ "$integrity_dir/rclone-check.differ" \
     --missing-on-dst "$integrity_dir/rclone-check.missing-on-dst" \
     --error "$integrity_dir/rclone-check.error" || check_status=$?
+  if [[ "$check_status" == "75" ]]; then
+    return 75
+  fi
 
   printf '%s\n' "$check_status" > "$integrity_dir/rclone-check.exit-code"
 }
@@ -270,6 +380,14 @@ run_backup_flow() {
     warn "Backup cancelled."
     return 0
   fi
+  destination_assert_write_target "$run_dir" || return 1
+
+  local destination_guard_uuid=""
+  if destination_requires_mount_guard "$run_dir"; then
+    local destination_guard_info=""
+    destination_guard_info="$(destination_capture_guard "$run_dir")" || return 1
+    IFS=$'\t' read -r _ destination_guard_uuid _ <<< "$destination_guard_info"
+  fi
 
   local created_at started_at finished_at status
   created_at="$(timestamp_utc)"
@@ -299,7 +417,53 @@ run_backup_flow() {
       status="completed_with_warnings"
     fi
   fi
-  [[ "$files_enabled" == "yes" ]] && backup_files_component "$run_dir" "$meta_dir/include-paths.txt" "$meta_dir/exclude-patterns.txt"
+  if [[ "$files_enabled" == "yes" ]]; then
+    local destination_guard_error="$state_dir/destination-guard.error"
+    while true; do
+      backup_files_component "$run_dir" "$meta_dir/include-paths.txt" "$meta_dir/exclude-patterns.txt" "$destination_guard_error"
+      local files_status=$?
+      if [[ "$files_status" == "0" ]]; then
+        break
+      fi
+      if [[ "$files_status" != "75" ]]; then
+        break
+      fi
+
+      local rebound_paths
+      rebound_paths="$(pause_for_destination_change "$destination_base" "$run_dir" "$destination_guard_uuid")" || {
+        warn "Backup paused. Reconnect the destination and use Resume latest run to continue."
+        return 1
+      }
+      IFS=$'\t' read -r destination_base run_dir <<< "$rebound_paths"
+      meta_dir="$run_dir/meta"
+      destination_assert_write_target "$run_dir" || return 1
+      if destination_requires_mount_guard "$run_dir"; then
+        local destination_guard_info=""
+        destination_guard_info="$(destination_capture_guard "$run_dir")" || return 1
+        IFS=$'\t' read -r _ destination_guard_uuid _ <<< "$destination_guard_info"
+      fi
+    done
+  fi
+
+  if ! destination_assert_write_target "$run_dir"; then
+    if [[ -n "$destination_guard_uuid" ]]; then
+      local rebound_paths
+      rebound_paths="$(pause_for_destination_change "$destination_base" "$run_dir" "$destination_guard_uuid")" || {
+        warn "Backup paused. Reconnect the destination and use Resume latest run to continue."
+        return 1
+      }
+      IFS=$'\t' read -r destination_base run_dir <<< "$rebound_paths"
+      meta_dir="$run_dir/meta"
+      destination_assert_write_target "$run_dir" || return 1
+      if destination_requires_mount_guard "$run_dir"; then
+        local destination_guard_info=""
+        destination_guard_info="$(destination_capture_guard "$run_dir")" || return 1
+        IFS=$'\t' read -r _ destination_guard_uuid _ <<< "$destination_guard_info"
+      fi
+    else
+      return 1
+    fi
+  fi
 
   finished_at="$(timestamp_utc)"
   status="completed"

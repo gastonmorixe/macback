@@ -4,6 +4,9 @@
 
 - Destination mount validation
 - Destination metadata formatting
+- Destination guard status passthrough
+- Destination change stops the guarded child process
+- Destination pause/rebind flow for same-volume remounts
 - Filter generation
 - Template expansion
 - Restore candidate discovery
@@ -21,6 +24,7 @@
 - Restore source selection
 - Inspect success and failure cases
 - Resume/new-run decision behavior
+- Destination guard and remount handling are currently covered by unit tests with mocked mount identity, not by a live unplug/replug integration test
 
 ## PTY / TUI
 
@@ -36,4 +40,5 @@
 - Invalid manifest
 - Missing checksum
 - ExFAT-like destination behavior
+- Mocked destination disconnect/remount behavior
 - Homebrew-present and Homebrew-missing restore flows

@@ -5,10 +5,9 @@ set timeout 10
 set env(MACBACK_TEST_TTY_STDIO) "1"
 spawn bash -lc "cd \"$root\" && ./macback"
 expect -re {macback}
-expect -re {Backup +Create a new backup run}
+expect -re {Primary home}
 send -- "\033\[B"
-expect -re {Restore +Restore from an existing backup}
 send -- "\033\[A"
-expect -re {Backup +Create a new backup run}
 send -- "q"
+expect -re {Bye\.}
 expect eof

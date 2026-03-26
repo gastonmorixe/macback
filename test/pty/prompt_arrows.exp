@@ -2,13 +2,7 @@
 set root [lindex $argv 0]
 set timeout 10
 
-set env(MACBACK_TEST_DESTINATIONS) "/Volumes/ST1000LM1TB"
-set env(MACBACK_TEST_TTY_STDIO) "1"
-spawn bash -lc "cd \"$root\" && source ./macback && select_destination_base"
-expect -re {Backup destination}
-expect -re {Custom path}
-send -- "j"
-send -- "\r"
+spawn bash -lc "cd \"$root\" && stty -echo && trap 'stty echo' EXIT && source ./macback && prompt \"Custom destination path\" && ui_read_prompt_line && printf \"%s\\n\" \"\$REPLY\""
 expect -re {Custom destination path}
 send -- "\033\[A\033\[B/tmp/custom-pty-test\r"
 expect {

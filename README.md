@@ -23,12 +23,13 @@
 - 📦 **Modular components**: back up files, Homebrew, keychain metadata, launchd metadata, and system snapshots independently
 - 🧠 **Smart defaults**: iCloud paths, caches, `node_modules`, build artifacts, and other rebuildables are excluded automatically
 - 🔄 **rclone-powered**: reliable file transfer with progress reporting and integrity verification
+- 🛡️ **Destination guard**: supervises `rclone` and pauses the backup if the selected volume disappears, remounts elsewhere, or no longer matches the original mount identity
 - 🔒 **SHA256 checksums**: `rclone check` verifies that backups are complete and correct
 - 📋 **JSON manifests**: spec versioning for structured metadata and forward compatibility
 - ⏸️ **Resume support**: pick up interrupted backups without re-copying transferred files
 - 🎯 **Granular restore**: choose which components, paths, and individual app configs to restore
 - 🏥 **Doctor command**: diagnose and fix backup health, permissions, and integrity issues
-- 🧪 **Comprehensive tests**: 22 test files (unit + integration + PTY) powered by BATS
+- 🧪 **Comprehensive tests**: unit + integration + PTY coverage powered by BATS
 - 🔐 **Runs as root**: full access to system files and Library data, with automatic user detection
 
 ## 📦 What Gets Backed Up
@@ -117,6 +118,18 @@ sudo bash ./macback help       # show usage information
 | `/` | Filter / Search |
 | `q` | Cancel / Back |
 
+## 🛡️ Destination Safety
+
+For local-disk backups, `rclone` only sees a filesystem path. It does not know that `/Volumes/My Disk` is supposed to remain bound to the same physical external drive for the entire run. Because of that, macback wraps the file-copy/check steps with a parallel destination guard.
+
+- Before `rclone` starts, macback records the selected destination mount root, filesystem device id, and volume UUID when available.
+- While `rclone` runs, a watcher checks that identity every 2 seconds.
+- If the destination disappears or remounts under a different `/Volumes/...` path, macback stops `rclone` and pauses the backup instead of trusting the stale pathname.
+- If the same volume UUID comes back under a new mount path, macback can offer to continue the same run on the remounted volume.
+- Stale `/Volumes/...` directories that are not real mounted volumes are rejected before a run is created or resumed.
+
+This is a strong supervisory guard, not a per-write guarantee. Writes already in flight when the destination changes may still complete or fail before the watcher stops `rclone`.
+
 ## 🏗️ Architecture
 
 ```
@@ -126,9 +139,9 @@ lib/
   ui.sh              # terminal UI framework (colors, selectors, widgets)
   templates.sh       # backup rule template expansion (@HOME@ tokens)
   filter.sh          # rclone filter generation
-  destination.sh     # destination volume selection and validation
+  destination.sh     # destination volume selection, mount identity capture, remount lookup
   manifest.sh        # manifest creation, validation, integrity checks
-  components.sh      # backup component handlers (files, brew, keychain, launchd, system)
+  components.sh      # backup components plus the rclone destination watcher/pause flow
   restore.sh         # restore workflows, path remapping, permission reconciliation
 templates/
   include-paths.txt.template      # default paths to back up
