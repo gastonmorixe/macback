@@ -1,11 +1,17 @@
-# 🖥️ macback
+<p align="center">
+  <img src="docs/assets/logo.png" alt="macback" height="300" />
+</p>
 
-**A powerful, interactive macOS backup and restore CLI.**
+<h1 align="center">macback</h1>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/gastonmorixe/macback/actions/workflows/ci.yml/badge.svg)](https://github.com/gastonmorixe/macback/actions/workflows/ci.yml)
-[![ShellCheck](https://img.shields.io/badge/linted%20with-ShellCheck-brightgreen)](https://www.shellcheck.net/)
-[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey)](https://www.apple.com/macos/)
+<p align="center"><strong>A powerful, interactive macOS backup and restore CLI</strong></p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://github.com/gastonmorixe/macback/actions/workflows/ci.yml"><img src="https://github.com/gastonmorixe/macback/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://www.shellcheck.net/"><img src="https://img.shields.io/badge/linted%20with-ShellCheck-brightgreen" alt="ShellCheck"></a>
+  <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="Platform: macOS"></a>
+</p>
 
 ---
 
