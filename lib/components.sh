@@ -213,6 +213,7 @@ backup_files_component() {
   local include_file="$2"
   local exclude_file="$3"
   local destination_guard_error="$4"
+  local backup_mode="${5:-new}"
   local out_dir="$run_dir/components/files"
   local meta_dir="$run_dir/meta"
   local integrity_dir="$meta_dir/integrity"
@@ -225,7 +226,8 @@ backup_files_component() {
   local rclone_flags=()
   build_dynamic_excludes "$run_dir" "$dynamic_excludes"
   generate_rclone_filter "$include_file" "$exclude_file" "$filter_file" "$dynamic_excludes"
-  rclone_flags+=(--filter-from "$filter_file" --links --progress --stats 2s --no-update-dir-modtime)
+  # Use in-place writes to avoid temp-file rename failures on external filesystems.
+  rclone_flags+=(--filter-from "$filter_file" --links --progress --stats 2s --no-update-dir-modtime --inplace)
   if path_supports_metadata "$run_dir"; then
     rclone_flags+=(--metadata)
   else
@@ -240,6 +242,16 @@ backup_files_component() {
   printf '%s\n' "$copy_status" > "$integrity_dir/rclone-copy.exit-code"
 
   write_permissions_inventory "$rootfs_dir" "$meta_dir/permissions.tsv"
+
+  if [[ "$backup_mode" == "resume" ]]; then
+    rm -f \
+      "$integrity_dir/rclone-check.combined" \
+      "$integrity_dir/rclone-check.differ" \
+      "$integrity_dir/rclone-check.missing-on-dst" \
+      "$integrity_dir/rclone-check.error"
+    printf '%s\n' "$MACBACK_RCLONE_CHECK_SKIPPED_STATUS" > "$integrity_dir/rclone-check.exit-code"
+    return 0
+  fi
 
   local check_status=0
   run_with_destination_guard "$run_dir" "$destination_guard_error" \
@@ -340,8 +352,9 @@ run_backup_flow() {
 
   local destination_base
   destination_base="$(select_destination_base)" || return 1
-  local run_dir
-  run_dir="$(choose_run_dir_for_backup "$destination_base")" || return 0
+  local backup_choice run_dir backup_mode
+  backup_choice="$(choose_run_dir_for_backup "$destination_base")" || return 0
+  IFS=$'\t' read -r backup_mode run_dir <<< "$backup_choice"
   local meta_dir="$run_dir/meta"
   local state_dir
   state_dir="$MACBACK_STATE_DIR/$(basename "$run_dir")"
@@ -420,7 +433,7 @@ run_backup_flow() {
   if [[ "$files_enabled" == "yes" ]]; then
     local destination_guard_error="$state_dir/destination-guard.error"
     while true; do
-      backup_files_component "$run_dir" "$meta_dir/include-paths.txt" "$meta_dir/exclude-patterns.txt" "$destination_guard_error"
+      backup_files_component "$run_dir" "$meta_dir/include-paths.txt" "$meta_dir/exclude-patterns.txt" "$destination_guard_error" "$backup_mode"
       local files_status=$?
       if [[ "$files_status" == "0" ]]; then
         break
@@ -475,7 +488,9 @@ run_backup_flow() {
     check_exit="$(cat "$meta_dir/integrity/rclone-check.exit-code")"
   fi
   if [[ "$copy_exit" != "0" && -n "$copy_exit" ]] || [[ "$check_exit" != "0" && -n "$check_exit" ]]; then
-    status="completed_with_warnings"
+    if ! rclone_check_status_is_skipped "$check_exit"; then
+      status="completed_with_warnings"
+    fi
   fi
   write_run_env "$meta_dir/run.env" \
     SPEC_VERSION "$MACBACK_SPEC_VERSION" \
@@ -510,6 +525,8 @@ run_backup_flow() {
     if [[ -n "$check_exit" ]]; then
       if [[ "$check_exit" == "0" ]]; then
         kv "rclone check" "${C_OK}OK${C_RESET}"
+      elif rclone_check_status_is_skipped "$check_exit"; then
+        kv "rclone check" "${C_DIM}skipped for fast resume${C_RESET}"
       else
         kv "rclone check" "${C_WARN}WARNINGS (exit $check_exit)${C_RESET}"
         if [[ -f "$meta_dir/integrity/rclone-check.differ" ]]; then

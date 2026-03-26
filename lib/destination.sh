@@ -219,7 +219,7 @@ choose_run_dir_for_backup() {
   latest_run="$(find_latest_run_dir "$base" 2>/dev/null || true)"
 
   if [[ -z "$latest_run" ]]; then
-    create_run_dir "$base"
+    printf 'new\t%s\n' "$(create_run_dir "$base")"
     return 0
   fi
 
@@ -245,9 +245,9 @@ choose_run_dir_for_backup() {
         warn "A backup process is still active for $latest_run."
         return 1
       fi
-      printf '%s\n' "$latest_run"
+      printf 'resume\t%s\n' "$latest_run"
       ;;
-    Create\ new\ run) create_run_dir "$base" ;;
+    Create\ new\ run) printf 'new\t%s\n' "$(create_run_dir "$base")" ;;
     Back) return 1 ;;
     *) return 1 ;;
   esac

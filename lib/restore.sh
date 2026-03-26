@@ -404,6 +404,7 @@ run_inspect_flow() {
     esac
     case "$(read_files_verification_status "$manifest" 2>/dev/null || echo missing)" in
       0) kv "Files verify" "rclone check OK" ;;
+      "$MACBACK_RCLONE_CHECK_SKIPPED_STATUS") kv "Files verify" "skipped for fast resume" ;;
       2|missing) kv "Files verify" "status missing" ;;
       *) kv "Files verify" "rclone check reported issues" ;;
     esac
@@ -416,7 +417,13 @@ run_inspect_flow() {
     if [[ -f "$meta_dir/integrity/rclone-check.exit-code" ]]; then
       local check_exit
       check_exit="$(cat "$meta_dir/integrity/rclone-check.exit-code")"
-      [[ "$check_exit" == "0" ]] && kv "Files verify" "rclone check OK" || kv "Files verify" "rclone check reported issues"
+      if [[ "$check_exit" == "0" ]]; then
+        kv "Files verify" "rclone check OK"
+      elif rclone_check_status_is_skipped "$check_exit"; then
+        kv "Files verify" "skipped for fast resume"
+      else
+        kv "Files verify" "rclone check reported issues"
+      fi
     fi
   fi
 }
@@ -461,6 +468,7 @@ run_restore_flow() {
 
   case "$(read_files_verification_status "$manifest" 2>/dev/null || echo missing)" in
     0|"") ;;
+    "$MACBACK_RCLONE_CHECK_SKIPPED_STATUS") ;;
     *)
       warn "This backup recorded file verification issues."
       if ! confirm "Continue with restore anyway?"; then
@@ -597,6 +605,8 @@ run_doctor_flow() {
     check_exit="$(cat "$meta_dir/integrity/rclone-check.exit-code")"
     if [[ "$check_exit" == "0" ]]; then
       kv "rclone check" "${C_OK}OK${C_RESET}"
+    elif rclone_check_status_is_skipped "$check_exit"; then
+      kv "rclone check" "${C_DIM}skipped for fast resume${C_RESET}"
     else
       kv "rclone check" "${C_WARN}WARNINGS (exit $check_exit)${C_RESET}"
       issues=$((issues + 1))

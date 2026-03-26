@@ -51,6 +51,14 @@ setup() {
   assert_output_contains "WARNINGS (exit 2)"
 }
 
+@test "doctor reports skipped fast-resume verification without warning" {
+  printf 'skipped-resume-fast\n' > "$FIXTURE/meta/integrity/rclone-check.exit-code"
+  run bash "$CLI" doctor "$FIXTURE"
+  assert_success
+  assert_output_contains "skipped for fast resume"
+  assert_output_contains "No issues found"
+}
+
 @test "doctor shows component status" {
   run bash "$CLI" doctor "$FIXTURE"
   assert_success

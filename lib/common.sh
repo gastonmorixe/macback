@@ -6,6 +6,7 @@ export MACBACK_STATE_DIR="${MACBACK_STATE_DIR:-$MACBACK_ROOT/state}"
 export MACBACK_OUTPUT_DIR="${MACBACK_OUTPUT_DIR:-$MACBACK_ROOT/output}"
 export MACBACK_SPEC_VERSION="1"
 export MACBACK_TOOL_VERSION="0.1.0"
+export MACBACK_RCLONE_CHECK_SKIPPED_STATUS="skipped-resume-fast"
 export MACBACK_MAX_MANIFEST_CHOICES="${MACBACK_MAX_MANIFEST_CHOICES:-40}"
 export MACBACK_MAX_PREVIEW_LINES="${MACBACK_MAX_PREVIEW_LINES:-120}"
 
@@ -222,4 +223,8 @@ pid_is_running() {
   local pid="$1"
   [[ -n "$pid" ]] || return 1
   ps -p "$pid" >/dev/null 2>&1
+}
+
+rclone_check_status_is_skipped() {
+  [[ "${1:-}" == "$MACBACK_RCLONE_CHECK_SKIPPED_STATUS" ]]
 }
