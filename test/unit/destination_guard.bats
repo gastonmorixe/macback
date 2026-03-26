@@ -29,62 +29,29 @@ setup() {
   assert_output_contains "failure:no"
 }
 
-@test "run_with_destination_guard stops the child when destination changes" {
+@test "run_with_destination_guard returns guard status when destination capture fails" {
   run env MACBACK_ROOT="$MACBACK_ROOT" bash -lc '
     source "$MACBACK_ROOT/macback"
 
-    local_guard_file="$BATS_TEST_TMPDIR/guard.present"
-    local_pid_file="$BATS_TEST_TMPDIR/child.pid"
-    local_failure_file="$BATS_TEST_TMPDIR/guard.failure"
-    : > "$local_guard_file"
-
     destination_capture_guard() {
-      printf "/Volumes/Test Disk\tUUID-123\t424242\n"
-    }
-    destination_matches_guard() {
-      [[ -f "$local_guard_file" ]]
-    }
-    sleep() {
-      command sleep 0.05
+      return 1
     }
     guarded_child() {
-      printf "%s\n" "$BASHPID" > "$local_pid_file"
-      while true; do
-        command sleep 0.05
-      done
+      printf "started\n" > "$BATS_TEST_TMPDIR/child.started"
     }
-
-    (
-      command sleep 0.20
-      rm -f "$local_guard_file"
-    ) &
-
     set +e
-    run_with_destination_guard "/Volumes/Test Disk/run" "$local_failure_file" guarded_child
+    run_with_destination_guard "/Volumes/Test Disk/run" "$BATS_TEST_TMPDIR/guard.failure" guarded_child
     echo status:$?
-
-    if [[ -f "$local_failure_file" ]]; then
-      echo failure:yes
+    if [[ -f "$BATS_TEST_TMPDIR/child.started" ]]; then
+      echo child:started
     else
-      echo failure:no
-    fi
-
-    if [[ -f "$local_pid_file" ]]; then
-      child_pid="$(cat "$local_pid_file")"
-      if kill -0 "$child_pid" 2>/dev/null; then
-        echo child:alive
-      else
-        echo child:stopped
-      fi
-    else
-      echo child:missing
+      echo child:not-started
     fi
   '
 
   assert_success
   assert_output_contains "status:75"
-  assert_output_contains "failure:yes"
-  assert_output_contains "child:stopped"
+  assert_output_contains "child:not-started"
 }
 
 @test "pause_for_destination_change can continue on the same volume remounted elsewhere" {

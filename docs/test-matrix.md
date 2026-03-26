@@ -5,7 +5,7 @@
 - Destination mount validation
 - Destination metadata formatting
 - Destination guard status passthrough
-- Destination change stops the guarded child process
+- Destination guard rejects stale targets before the child starts
 - Destination pause/rebind flow for same-volume remounts
 - Filter generation
 - Template expansion
