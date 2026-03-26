@@ -1,5 +1,41 @@
 #!/usr/bin/env bash
 
+destination_mount_fstype() {
+  local path="$1"
+  mount | awk -v target="$path" '
+    index($0, " on " target " (") {
+      line = $0
+      sub(/^.* \(/, "", line)
+      sub(/,.*/, "", line)
+      print line
+      exit
+    }
+  '
+}
+
+destination_diskutil_info() {
+  local path="$1"
+  diskutil info "$path" 2>/dev/null
+}
+
+destination_mount_is_local() {
+  local path="$1"
+  mount | awk -v target="$path" '
+    index($0, " on " target " (") {
+      if ($0 ~ /\(.*(^|, )local(,|\))/) {
+        found=1
+        exit 0
+      }
+      exit 1
+    }
+    END {
+      if (!found) {
+        exit 1
+      }
+    }
+  '
+}
+
 discover_destination_roots() {
   if [[ -n "${MACBACK_TEST_DESTINATIONS:-}" ]]; then
     printf '%s\n' "$MACBACK_TEST_DESTINATIONS"
@@ -7,15 +43,14 @@ discover_destination_roots() {
   fi
   local seen=""
   local volume
-  for volume in /Volumes/*; do
-    [[ -e "$volume" ]] || continue
-    [[ -L "$volume" ]] && continue
+  while IFS= read -r volume; do
+    [[ -n "$volume" ]] || continue
     local trimmed
     trimmed="$(trim_trailing_space "$volume")"
     case "$(basename "$trimmed")" in
       .timemachine|com.apple.TimeMachine.localsnapshots|Macintosh\ HD|Backups\ of\ *) continue ;;
     esac
-    if [[ "$volume" != "$trimmed" && -e "$trimmed" ]]; then
+    if ! destination_mount_is_local "$trimmed"; then
       continue
     fi
     if ! destination_is_real_mount "$trimmed"; then
@@ -30,20 +65,41 @@ $trimmed
     esac
     seen="${seen}${trimmed}"$'\n'
     printf '%s\n' "$trimmed"
-  done
+  done < <(
+    mount | awk '
+      index($0, " on /Volumes/") {
+        line = $0
+        on_pos = index(line, " on ")
+        if (!on_pos) next
+        rest = substr(line, on_pos + 4)
+        paren_pos = index(rest, " (")
+        if (!paren_pos) next
+        mount_point = substr(rest, 1, paren_pos - 1)
+        opts = substr(rest, paren_pos + 2)
+        if (opts ~ /(^|, )local(,|\))/) {
+          print mount_point
+        }
+      }
+    '
+  )
 }
 
 destination_diskutil_value() {
   local path="$1"
   local key="$2"
-  diskutil info "$path" 2>/dev/null | awk -F': *' -v k="$key" '$1 ~ k {print $2; exit}'
+  destination_diskutil_info "$path" | awk -F': *' -v k="$key" '$1 ~ k {print $2; exit}'
 }
 
 destination_is_real_mount() {
   local path="$1"
   local mounted mount_point
-  mounted="$(destination_diskutil_value "$path" '^ *Mounted$')"
-  mount_point="$(destination_diskutil_value "$path" '^ *Mount Point$')"
+  IFS=$'\t' read -r mounted mount_point < <(
+    destination_diskutil_info "$path" | awk -F': *' '
+      $1 ~ /^ *Mounted$/ { mounted=$2 }
+      $1 ~ /^ *Mount Point$/ { mount_point=$2 }
+      END { print mounted "\t" mount_point }
+    '
+  )
   [[ "$mounted" == "Yes" ]] || return 1
   [[ "$mount_point" == "$path" ]]
 }
@@ -131,14 +187,21 @@ describe_destination() {
   local path="$1"
   local label
   local device_node fs_type location protocol writable
+  local info=""
   label="$(basename "$path")"
-  device_node="$(destination_diskutil_value "$path" '^ *Device Node$')"
-  fs_type="$(destination_diskutil_value "$path" '^ *Type \(Bundle\)$')"
+  info="$(destination_diskutil_info "$path" || true)"
+  IFS=$'\t' read -r device_node fs_type location protocol < <(
+    printf '%s\n' "$info" | awk -F': *' '
+      $1 ~ /^ *Device Node$/ { device_node=$2 }
+      $1 ~ /^ *Type \(Bundle\)$/ { fs_type=$2 }
+      $1 ~ /^ *Device Location$/ { location=$2 }
+      $1 ~ /^ *Protocol$/ { protocol=$2 }
+      END { print device_node "\t" fs_type "\t" location "\t" protocol }
+    '
+  )
   if [[ -z "$fs_type" || "$fs_type" == "unknown" ]]; then
-    fs_type="$(mount | grep -F " on $path (" | sed 's/.*(\([^,]*\).*/\1/' || true)"
+    fs_type="$(destination_mount_fstype "$path")"
   fi
-  location="$(destination_diskutil_value "$path" '^ *Device Location$')"
-  protocol="$(destination_diskutil_value "$path" '^ *Protocol$')"
   [[ -w "$path" ]] && writable="writable" || writable="read-only"
   printf '%s (%s)|%s • %s • %s • %s|%s\n' \
     "$label" \

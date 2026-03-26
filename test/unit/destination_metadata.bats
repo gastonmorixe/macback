@@ -7,14 +7,20 @@ setup() {
 @test "destination_is_real_mount rejects /Volumes folders that are not the actual mount point" {
   run env MACBACK_ROOT="$MACBACK_ROOT" bash -lc '
     source "$MACBACK_ROOT/macback"
-    destination_diskutil_value() {
-      local path="$1"
-      local key="$2"
-      case "$path|$key" in
-        "/Volumes/ST1000LM1TB|^ *Mounted$") echo "Yes" ;;
-        "/Volumes/ST1000LM1TB|^ *Mount Point$") echo "/Volumes/ST1000LM1TB" ;;
-        "/Volumes/ST1000LM1TB |^ *Mounted$") echo "Yes" ;;
-        "/Volumes/ST1000LM1TB |^ *Mount Point$") echo "/System/Volumes/Data" ;;
+    destination_diskutil_info() {
+      case "$1" in
+        "/Volumes/ST1000LM1TB")
+          cat <<EOF
+   Mounted: Yes
+   Mount Point: /Volumes/ST1000LM1TB
+EOF
+          ;;
+        "/Volumes/ST1000LM1TB ")
+          cat <<EOF
+   Mounted: Yes
+   Mount Point: /System/Volumes/Data
+EOF
+          ;;
       esac
     }
     set +e
@@ -31,15 +37,13 @@ setup() {
 @test "describe_destination includes device and filesystem metadata" {
   run env MACBACK_ROOT="$MACBACK_ROOT" bash -lc '
     source "$MACBACK_ROOT/macback"
-    destination_diskutil_value() {
-      local path="$1"
-      local key="$2"
-      case "$key" in
-        "^ *Device Node$") echo "/dev/disk12s2" ;;
-        "^ *Type \(Bundle\)$") echo "exfat" ;;
-        "^ *Device Location$") echo "External" ;;
-        "^ *Protocol$") echo "USB" ;;
-      esac
+    destination_diskutil_info() {
+      cat <<EOF
+   Device Node: /dev/disk12s2
+   Type (Bundle): exfat
+   Device Location: External
+   Protocol: USB
+EOF
     }
     test -w /tmp
     describe_destination /tmp
@@ -51,17 +55,48 @@ setup() {
   assert_output_contains "USB"
 }
 
-@test "destination_capture_guard uses the mounted volume root and device identity" {
+@test "discover_destination_roots skips non-local mounts before probing diskutil" {
   run env MACBACK_ROOT="$MACBACK_ROOT" bash -lc '
     source "$MACBACK_ROOT/macback"
+
+    mount() {
+      cat <<EOF
+/dev/disk11s1 on /Volumes/GASTON (apfs, local, nodev, nosuid, journaled, noowners)
+//gaston@rpi5._smb._tcp.local/PI5SHARE on /Volumes/PI5SHARE (smbfs, nodev, nosuid, mounted by gaston)
+EOF
+    }
+    destination_mount_is_local() {
+      [[ "$1" == "/Volumes/GASTON" ]]
+    }
+    destination_is_real_mount() {
+      [[ "$1" == "/Volumes/GASTON" ]]
+    }
     destination_diskutil_value() {
       local path="$1"
       local key="$2"
       case "$path|$key" in
-        "/Volumes/ST1000LM1TB 2|^ *Mounted$") echo "Yes" ;;
-        "/Volumes/ST1000LM1TB 2|^ *Mount Point$") echo "/Volumes/ST1000LM1TB 2" ;;
-        "/Volumes/ST1000LM1TB 2|^ *Volume UUID$") echo "UUID-123" ;;
+        "/Volumes/GASTON|^ *Mounted$") echo "Yes" ;;
+        "/Volumes/GASTON|^ *Mount Point$") echo "/Volumes/GASTON" ;;
+        "/Volumes/PI5SHARE|^ *Mounted$") echo "should-not-probe" ;;
       esac
+    }
+
+    discover_destination_roots
+  '
+  assert_success
+  assert_output_contains "/Volumes/GASTON"
+  [[ "$output" != *"PI5SHARE"* ]]
+}
+
+@test "destination_capture_guard uses the mounted volume root and device identity" {
+  run env MACBACK_ROOT="$MACBACK_ROOT" bash -lc '
+    source "$MACBACK_ROOT/macback"
+    destination_diskutil_info() {
+      cat <<EOF
+   Mounted: Yes
+   Mount Point: /Volumes/ST1000LM1TB 2
+   Volume UUID: UUID-123
+EOF
     }
     destination_path_device_id() {
       echo "424242"

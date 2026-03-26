@@ -156,11 +156,7 @@ list_run_manifests() {
 
   local root
   for root in "${search_roots[@]}"; do
-    if has_cmd fd; then
-      fd -HI 'manifest.json' "$root" -d 6 2>/dev/null | grep '/meta/manifest\.json$' || true
-    else
-      find "$root" -maxdepth 6 -name manifest.json 2>/dev/null | grep '/meta/manifest\.json$' || true
-    fi
+    find "$root" -mindepth 4 -maxdepth 4 -type f -path '*/meta/manifest.json' 2>/dev/null || true
   done
 }
 
@@ -178,11 +174,7 @@ list_run_dirs() {
 
   local root
   for root in "${search_roots[@]}"; do
-    if has_cmd fd; then
-      fd -HI 'run.env' "$root" -d 6 2>/dev/null | grep '/meta/run\.env$' || true
-    else
-      find "$root" -maxdepth 6 -name 'run.env' -path '*/meta/run.env' 2>/dev/null || true
-    fi
+    find "$root" -mindepth 4 -maxdepth 4 -type f -path '*/meta/run.env' 2>/dev/null || true
   done | while IFS= read -r f; do
     dirname "$(dirname "$f")"
   done | sort -u
