@@ -19,17 +19,17 @@
 
 ## ✨ Features
 
-- 🎛️ **Interactive TUI** with arrow keys, vim bindings (`j`/`k`), `/` filtering, and `Space` multi-select
+- 🎛️ **Interactive TUI**: arrow keys, vim bindings (`j`/`k`), `/` filtering, and `Space` multi-select
 - 📦 **Modular components**: back up files, Homebrew, keychain metadata, launchd metadata, and system snapshots independently
 - 🧠 **Smart defaults**: iCloud paths, caches, `node_modules`, build artifacts, and other rebuildables are excluded automatically
-- 🔄 **rclone-powered** file transfer with progress reporting and integrity verification
-- 🔒 **SHA256 checksums** and `rclone check` verify that backups are complete and correct
-- 📋 **JSON manifests** with spec versioning for structured metadata and forward compatibility
+- 🔄 **rclone-powered**: reliable file transfer with progress reporting and integrity verification
+- 🔒 **SHA256 checksums**: `rclone check` verifies that backups are complete and correct
+- 📋 **JSON manifests**: spec versioning for structured metadata and forward compatibility
 - ⏸️ **Resume support**: pick up interrupted backups without re-copying transferred files
 - 🎯 **Granular restore**: choose which components, paths, and individual app configs to restore
-- 🏥 **Doctor command** to diagnose and fix backup health, permissions, and integrity issues
+- 🏥 **Doctor command**: diagnose and fix backup health, permissions, and integrity issues
 - 🧪 **Comprehensive tests**: 22 test files (unit + integration + PTY) powered by BATS
-- 🔐 **Runs as root** for full access to system files and Library data, with automatic user detection
+- 🔐 **Runs as root**: full access to system files and Library data, with automatic user detection
 
 ## 📦 What Gets Backed Up
 
