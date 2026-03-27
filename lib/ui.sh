@@ -9,6 +9,7 @@ if is_tty; then
   C_ERROR=$'\033[38;5;203m'
   C_OK=$'\033[38;5;77m'
   C_CHROME=$'\033[38;5;240m'
+  C_SELECT=$'\033[38;5;77m'
 else
   C_RESET=""
   C_DIM=""
@@ -18,6 +19,7 @@ else
   C_ERROR=""
   C_OK=""
   C_CHROME=""
+  C_SELECT=""
 fi
 
 ui_term_width() {
@@ -132,8 +134,8 @@ ui_tput() {
 
 print_banner() {
   local title="$1"
-  ui_println "${C_BOLD}${C_ACCENT}${title}${C_RESET}"
-  ui_println "${C_DIM}macOS backup and restore${C_RESET}"
+  ui_println "  ${C_BOLD}${C_ACCENT}${title}${C_RESET} ${C_CHROME}v${MACBACK_TOOL_VERSION}${C_RESET}"
+  ui_println "  ${C_CHROME}macOS backup and restore · ${MACBACK_REPO}${C_RESET}"
   ui_println ""
 }
 
@@ -175,7 +177,7 @@ dim() {
 }
 
 prompt() {
-  ui_printf '  %b%s%b %b❯%b ' "$C_DIM" "$1" "$C_RESET" "$C_ACCENT" "$C_RESET"
+  ui_printf '  %b%s%b %b❯%b ' "$C_DIM" "$1" "$C_RESET" "$C_SELECT" "$C_RESET"
 }
 
 confirm() {
@@ -293,7 +295,7 @@ _tui_draw_single() {
       _tui_split_option "${options[$idx]}"
       line="$(_tui_format_single_line "${options[$idx]}")"
       if (( visible_pos == cursor )); then
-        ui_println "  ${C_ACCENT}❯${C_RESET} ${C_BOLD}${line}${C_RESET}"
+        ui_println "  ${C_SELECT}❯${C_RESET} ${C_BOLD}${line}${C_RESET}"
       else
         ui_println "    ${C_DIM}${line}${C_RESET}"
       fi
@@ -344,7 +346,7 @@ _tui_draw_multi() {
       idx="${_TUI_VISIBLE_INDICES[$visible_pos]}"
       line="$(_tui_format_multi_line "${options[$idx]}")"
       if (( visible_pos == cursor )); then
-        ui_println "  ${C_ACCENT}❯${C_RESET} ${C_BOLD}${line}${C_RESET}"
+        ui_println "  ${C_SELECT}❯${C_RESET} ${C_BOLD}${line}${C_RESET}"
       else
         ui_println "    ${C_DIM}${line}${C_RESET}"
       fi
