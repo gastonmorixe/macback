@@ -374,17 +374,26 @@ run_inspect_flow() {
   local meta_dir="$run_dir/meta"
   [[ -d "$meta_dir" ]] || { error "No meta directory in: $run_dir"; return 1; }
   [[ -f "$meta_dir/run.env" ]] && load_run_env "$meta_dir/run.env"
+  local status_hint
+  status_hint="$(run_dir_status_hint "$run_dir")"
 
   print_banner "Backup inspection"
   kv "Run dir" "$run_dir"
   [[ -n "${CREATED_AT:-}" ]] && kv "Created" "$CREATED_AT"
   [[ -n "${FINISHED_AT:-}" ]] && kv "Finished" "${FINISHED_AT:-pending}"
-  [[ -n "${STATUS:-}" ]] && kv "Status" "$STATUS"
+  if [[ -n "${STATUS:-}" && "$status_hint" == "interrupted" && "$STATUS" == "running" ]]; then
+    kv "Status" "interrupted"
+  elif [[ -n "${STATUS:-}" ]]; then
+    kv "Status" "$STATUS"
+  fi
+  [[ -n "${BACKUP_PROFILE:-}" ]] && kv "Speed mode" "$(backup_speed_profile_label "$BACKUP_PROFILE")"
   if [[ -n "${SOURCE_SERIAL:-}" && -n "${MACBACK_MACHINE_SERIAL:-}" && "$SOURCE_SERIAL" == "$MACBACK_MACHINE_SERIAL" ]]; then
     kv "Serial" "${C_DIM}matches this Mac${C_RESET}"
   fi
   if [[ -n "$manifest" ]]; then
     kv "Manifest" "${C_OK}present${C_RESET}"
+  elif [[ "$status_hint" == "interrupted" ]]; then
+    kv "Manifest" "${C_WARN}MISSING (backup interrupted before finalization)${C_RESET}"
   else
     kv "Manifest" "${C_WARN}MISSING (backup incomplete)${C_RESET}"
   fi
@@ -404,7 +413,7 @@ run_inspect_flow() {
     esac
     case "$(read_files_verification_status "$manifest" 2>/dev/null || echo missing)" in
       0) kv "Files verify" "rclone check OK" ;;
-      "$MACBACK_RCLONE_CHECK_SKIPPED_STATUS") kv "Files verify" "skipped for fast resume" ;;
+      "$MACBACK_RCLONE_CHECK_SKIPPED_STATUS"|"$MACBACK_RCLONE_CHECK_SKIPPED_FAST_STATUS"|"$MACBACK_RCLONE_CHECK_SKIPPED_ULTRAFAST_STATUS") kv "Files verify" "$(rclone_check_status_label "$(read_files_verification_status "$manifest" 2>/dev/null || echo missing)")" ;;
       2|missing) kv "Files verify" "status missing" ;;
       *) kv "Files verify" "rclone check reported issues" ;;
     esac
@@ -420,7 +429,7 @@ run_inspect_flow() {
       if [[ "$check_exit" == "0" ]]; then
         kv "Files verify" "rclone check OK"
       elif rclone_check_status_is_skipped "$check_exit"; then
-        kv "Files verify" "skipped for fast resume"
+        kv "Files verify" "$(rclone_check_status_label "$check_exit")"
       else
         kv "Files verify" "rclone check reported issues"
       fi
@@ -468,7 +477,7 @@ run_restore_flow() {
 
   case "$(read_files_verification_status "$manifest" 2>/dev/null || echo missing)" in
     0|"") ;;
-    "$MACBACK_RCLONE_CHECK_SKIPPED_STATUS") ;;
+    "$MACBACK_RCLONE_CHECK_SKIPPED_STATUS"|"$MACBACK_RCLONE_CHECK_SKIPPED_FAST_STATUS"|"$MACBACK_RCLONE_CHECK_SKIPPED_ULTRAFAST_STATUS") ;;
     *)
       warn "This backup recorded file verification issues."
       if ! confirm "Continue with restore anyway?"; then
@@ -606,7 +615,7 @@ run_doctor_flow() {
     if [[ "$check_exit" == "0" ]]; then
       kv "rclone check" "${C_OK}OK${C_RESET}"
     elif rclone_check_status_is_skipped "$check_exit"; then
-      kv "rclone check" "${C_DIM}skipped for fast resume${C_RESET}"
+      kv "rclone check" "${C_DIM}$(rclone_check_status_label "$check_exit")${C_RESET}"
     else
       kv "rclone check" "${C_WARN}WARNINGS (exit $check_exit)${C_RESET}"
       issues=$((issues + 1))

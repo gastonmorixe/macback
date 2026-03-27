@@ -28,7 +28,11 @@
 - If the destination changes or disconnects, the tool stops `rclone` and pauses the backup instead of continuing on a stale path.
 - If the same volume remounts elsewhere and the UUID still matches, the tool can offer to continue the same run on the remounted path.
 - The files backup uses `rclone --inplace` so final file writes do not depend on temp-file rename behavior.
-- When resuming an existing backup run, the tool skips the full post-copy `rclone check` and records that verification was intentionally skipped for fast resume.
+- The backup flow asks for a speed profile:
+  - `normal`: size+modtime comparisons, conservative parallelism, full `rclone check` on new runs
+  - `fast`: higher `--transfers` / `--checkers`, skips the long post-copy `rclone check`
+  - `ultrafast`: higher parallelism, skips full verification, and uses `--size-only`
+- When resuming an existing backup run, the tool skips the full post-copy `rclone check` regardless of profile and records that verification was intentionally skipped for fast resume.
 - Backup stores:
   - run metadata
   - manifest metadata

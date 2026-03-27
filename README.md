@@ -128,7 +128,11 @@ For local-disk backups, `rclone` only sees a filesystem path. It does not know t
 - If the same volume UUID comes back under a new mount path, macback can offer to continue the same run on the remounted volume.
 - Stale `/Volumes/...` directories that are not real mounted volumes are rejected before a run is created or resumed.
 - File backups use `rclone --inplace` to avoid `.partial -> final` rename failures on external filesystems.
-- When you resume an existing backup run, macback skips the full post-copy `rclone check` so the restart path focuses on copying what is still missing.
+- Backup asks you to choose a speed profile:
+  - `Normal`: safer defaults, full `rclone check` on new runs
+  - `Fast`: more parallelism, skips the long post-copy `rclone check`
+  - `Ultrafast`: highest parallelism, skips full verification and compares by size only
+- When you resume an existing backup run, macback always skips the full post-copy `rclone check` so the restart path focuses on copying what is still missing.
 
 This is a strong supervisory guard, not a per-write guarantee. Writes already in flight when the destination changes may still complete or fail before the watcher stops `rclone`.
 

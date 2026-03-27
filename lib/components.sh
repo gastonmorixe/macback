@@ -214,6 +214,7 @@ backup_files_component() {
   local exclude_file="$3"
   local destination_guard_error="$4"
   local backup_mode="${5:-new}"
+  local backup_speed_profile="${6:-normal}"
   local out_dir="$run_dir/components/files"
   local meta_dir="$run_dir/meta"
   local integrity_dir="$meta_dir/integrity"
@@ -228,6 +229,10 @@ backup_files_component() {
   generate_rclone_filter "$include_file" "$exclude_file" "$filter_file" "$dynamic_excludes"
   # Use in-place writes to avoid temp-file rename failures on external filesystems.
   rclone_flags+=(--filter-from "$filter_file" --links --progress --stats 2s --no-update-dir-modtime --inplace)
+  while IFS= read -r flag; do
+    [[ -n "$flag" ]] || continue
+    rclone_flags+=("$flag")
+  done < <(backup_speed_profile_copy_flags "$backup_speed_profile")
   if path_supports_metadata "$run_dir"; then
     rclone_flags+=(--metadata)
   else
@@ -250,6 +255,18 @@ backup_files_component() {
       "$integrity_dir/rclone-check.missing-on-dst" \
       "$integrity_dir/rclone-check.error"
     printf '%s\n' "$MACBACK_RCLONE_CHECK_SKIPPED_STATUS" > "$integrity_dir/rclone-check.exit-code"
+    return 0
+  fi
+
+  local skipped_check_status=""
+  skipped_check_status="$(backup_speed_profile_check_status "$backup_speed_profile" 2>/dev/null || true)"
+  if [[ -n "$skipped_check_status" ]]; then
+    rm -f \
+      "$integrity_dir/rclone-check.combined" \
+      "$integrity_dir/rclone-check.differ" \
+      "$integrity_dir/rclone-check.missing-on-dst" \
+      "$integrity_dir/rclone-check.error"
+    printf '%s\n' "$skipped_check_status" > "$integrity_dir/rclone-check.exit-code"
     return 0
   fi
 
@@ -288,6 +305,52 @@ choose_component_flags() {
     esac
   done <<< "$selected"
   printf '%s\t%s\t%s\t%s\t%s\n' "$files" "$brew" "$keychain" "$launchd" "$system"
+}
+
+choose_backup_speed_profile() {
+  local choice
+  choice="$(choose_from_lines "Backup speed" \
+    "Normal|Safer defaults. Full rclone verification on new runs." \
+    "Fast|Higher parallelism. Skip the long post-copy rclone check." \
+    "Ultrafast|Highest parallelism. Skip full verification and compare by size only.")" || return 1
+
+  case "$choice" in
+    Normal) printf 'normal\n' ;;
+    Fast) printf 'fast\n' ;;
+    Ultrafast) printf 'ultrafast\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+backup_speed_profile_label() {
+  case "${1:-normal}" in
+    normal) printf 'Normal\n' ;;
+    fast) printf 'Fast\n' ;;
+    ultrafast) printf 'Ultrafast\n' ;;
+    *) printf '%s\n' "$1" ;;
+  esac
+}
+
+backup_speed_profile_copy_flags() {
+  case "${1:-normal}" in
+    normal)
+      printf '%s\n' --transfers 4 --checkers 8
+      ;;
+    fast)
+      printf '%s\n' --transfers 8 --checkers 16 --ignore-checksum
+      ;;
+    ultrafast)
+      printf '%s\n' --transfers 16 --checkers 32 --ignore-checksum --size-only
+      ;;
+  esac
+}
+
+backup_speed_profile_check_status() {
+  case "${1:-normal}" in
+    fast) printf '%s\n' "$MACBACK_RCLONE_CHECK_SKIPPED_FAST_STATUS" ;;
+    ultrafast) printf '%s\n' "$MACBACK_RCLONE_CHECK_SKIPPED_ULTRAFAST_STATUS" ;;
+    *) return 1 ;;
+  esac
 }
 
 edit_rules_loop() {
@@ -373,6 +436,8 @@ run_backup_flow() {
   component_flags="$(choose_component_flags)" || return 0
   local files_enabled brew_enabled keychain_enabled launchd_enabled system_enabled
   IFS=$'\t' read -r files_enabled brew_enabled keychain_enabled launchd_enabled system_enabled <<< "$component_flags"
+  local backup_speed_profile
+  backup_speed_profile="$(choose_backup_speed_profile)" || return 0
   edit_rules_loop "$state_dir/include-paths.txt" "$state_dir/exclude-patterns.txt"
 
   cp "$state_dir/include-paths.txt" "$meta_dir/include-paths.txt"
@@ -386,6 +451,7 @@ run_backup_flow() {
   kv "Keychain metadata" "$keychain_enabled"
   kv "Launchd metadata" "$launchd_enabled"
   kv "System snapshot" "$system_enabled"
+  kv "Speed mode" "$(backup_speed_profile_label "$backup_speed_profile")"
   kv "Include rules" "$(count_non_comment_lines "$meta_dir/include-paths.txt")"
   kv "Exclude rules" "$(count_non_comment_lines "$meta_dir/exclude-patterns.txt")"
   echo
@@ -419,6 +485,7 @@ run_backup_flow() {
     RUN_DIR "$run_dir" \
     SOURCE_USER "$MACBACK_PRIMARY_USER" \
     SOURCE_HOME "$source_home" \
+    BACKUP_PROFILE "$backup_speed_profile" \
     SOURCE_SERIAL "$MACBACK_MACHINE_SERIAL"
   write_run_json "$meta_dir/run.json" "$created_at" "$started_at" "$finished_at" "$status" "$destination_base" "$run_dir" "$MACBACK_PRIMARY_USER" "$source_home" "$MACBACK_MACHINE_SERIAL"
 
@@ -433,7 +500,7 @@ run_backup_flow() {
   if [[ "$files_enabled" == "yes" ]]; then
     local destination_guard_error="$state_dir/destination-guard.error"
     while true; do
-      backup_files_component "$run_dir" "$meta_dir/include-paths.txt" "$meta_dir/exclude-patterns.txt" "$destination_guard_error" "$backup_mode"
+      backup_files_component "$run_dir" "$meta_dir/include-paths.txt" "$meta_dir/exclude-patterns.txt" "$destination_guard_error" "$backup_mode" "$backup_speed_profile"
       local files_status=$?
       if [[ "$files_status" == "0" ]]; then
         break
@@ -503,6 +570,7 @@ run_backup_flow() {
     RUN_DIR "$run_dir" \
     SOURCE_USER "$MACBACK_PRIMARY_USER" \
     SOURCE_HOME "$source_home" \
+    BACKUP_PROFILE "$backup_speed_profile" \
     SOURCE_SERIAL "$MACBACK_MACHINE_SERIAL"
   write_run_json "$meta_dir/run.json" "$created_at" "$started_at" "$finished_at" "$status" "$destination_base" "$run_dir" "$MACBACK_PRIMARY_USER" "$source_home" "$MACBACK_MACHINE_SERIAL"
   write_manifest_json "$meta_dir/manifest.json" "$run_dir" "$([[ "$files_enabled" == "yes" ]] && echo true || echo false)" "$([[ "$brew_enabled" == "yes" ]] && echo true || echo false)" "$([[ "$keychain_enabled" == "yes" ]] && echo true || echo false)" "$([[ "$system_enabled" == "yes" ]] && echo true || echo false)" "$([[ "$launchd_enabled" == "yes" ]] && echo true || echo false)" "remap_to_target_home" "preserve_system_remap_user"
@@ -526,7 +594,7 @@ run_backup_flow() {
       if [[ "$check_exit" == "0" ]]; then
         kv "rclone check" "${C_OK}OK${C_RESET}"
       elif rclone_check_status_is_skipped "$check_exit"; then
-        kv "rclone check" "${C_DIM}skipped for fast resume${C_RESET}"
+        kv "rclone check" "${C_DIM}$(rclone_check_status_label "$check_exit")${C_RESET}"
       else
         kv "rclone check" "${C_WARN}WARNINGS (exit $check_exit)${C_RESET}"
         if [[ -f "$meta_dir/integrity/rclone-check.differ" ]]; then

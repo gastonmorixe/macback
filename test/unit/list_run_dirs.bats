@@ -30,3 +30,14 @@ setup() {
   [[ "$output" == *"20260325-100000"* ]]
   [[ "$output" != *"random-dir"* ]]
 }
+
+@test "run_dir_status_hint marks stale running run interrupted" {
+  local run="$BATS_TEST_TMPDIR/volumes/TestDisk3/macback/machine1/20260325-130000"
+  mkdir -p "$run/meta"
+  printf 'STATUS=running\n' > "$run/meta/run.env"
+  printf '999999\n' > "$run/meta/active.pid"
+
+  run run_dir_status_hint "$run"
+  assert_success
+  [[ "$output" == "interrupted" ]]
+}

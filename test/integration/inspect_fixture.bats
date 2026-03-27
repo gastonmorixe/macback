@@ -55,3 +55,21 @@ setup() {
   assert_output_contains "MISSING"
   assert_output_contains "Backup inspection"
 }
+
+@test "macback inspect marks stale running backup as interrupted" {
+  local interrupted="$BATS_TEST_TMPDIR/interrupted-run"
+  mkdir -p "$interrupted/meta" "$interrupted/components/files/rootfs"
+  write_run_env "$interrupted/meta/run.env" \
+    SPEC_VERSION 1 TOOL_VERSION 0.1.0 \
+    CREATED_AT 2026-03-25T00:00:00Z STARTED_AT 2026-03-25T00:00:00Z \
+    STATUS running DESTINATION_BASE /Volumes/Test RUN_DIR "$interrupted" \
+    SOURCE_USER tester SOURCE_HOME /Users/tester
+  write_run_json "$interrupted/meta/run.json" 2026-03-25T00:00:00Z 2026-03-25T00:00:00Z "" running /Volumes/Test "$interrupted" tester /Users/tester
+  printf '999999\n' > "$interrupted/meta/active.pid"
+
+  run bash "$CLI" inspect "$interrupted"
+  assert_success
+  assert_output_contains "Status"
+  assert_output_contains "interrupted"
+  assert_output_contains "backup interrupted before finalization"
+}

@@ -7,6 +7,8 @@ export MACBACK_OUTPUT_DIR="${MACBACK_OUTPUT_DIR:-$MACBACK_ROOT/output}"
 export MACBACK_SPEC_VERSION="1"
 export MACBACK_TOOL_VERSION="0.1.0"
 export MACBACK_RCLONE_CHECK_SKIPPED_STATUS="skipped-resume-fast"
+export MACBACK_RCLONE_CHECK_SKIPPED_FAST_STATUS="skipped-speed-fast"
+export MACBACK_RCLONE_CHECK_SKIPPED_ULTRAFAST_STATUS="skipped-speed-ultrafast"
 export MACBACK_MAX_MANIFEST_CHOICES="${MACBACK_MAX_MANIFEST_CHOICES:-40}"
 export MACBACK_MAX_PREVIEW_LINES="${MACBACK_MAX_PREVIEW_LINES:-120}"
 
@@ -218,5 +220,46 @@ pid_is_running() {
 }
 
 rclone_check_status_is_skipped() {
-  [[ "${1:-}" == "$MACBACK_RCLONE_CHECK_SKIPPED_STATUS" ]]
+  case "${1:-}" in
+    "$MACBACK_RCLONE_CHECK_SKIPPED_STATUS"|"$MACBACK_RCLONE_CHECK_SKIPPED_FAST_STATUS"|"$MACBACK_RCLONE_CHECK_SKIPPED_ULTRAFAST_STATUS") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+rclone_check_status_label() {
+  case "${1:-}" in
+    "$MACBACK_RCLONE_CHECK_SKIPPED_STATUS") printf 'skipped for fast resume\n' ;;
+    "$MACBACK_RCLONE_CHECK_SKIPPED_FAST_STATUS") printf 'skipped by Fast profile\n' ;;
+    "$MACBACK_RCLONE_CHECK_SKIPPED_ULTRAFAST_STATUS") printf 'skipped by Ultrafast profile\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+run_dir_status_hint() {
+  local run_dir="$1"
+  local meta_dir="$run_dir/meta"
+
+  if [[ -f "$meta_dir/manifest.json" ]]; then
+    printf 'complete\n'
+    return 0
+  fi
+
+  local status="" active_pid=""
+  if [[ -f "$meta_dir/run.env" ]]; then
+    status="$(awk -F= '/^STATUS=/{print $2; exit}' "$meta_dir/run.env" 2>/dev/null || true)"
+  fi
+  if [[ -f "$meta_dir/active.pid" ]]; then
+    active_pid="$(cat "$meta_dir/active.pid" 2>/dev/null || true)"
+  fi
+
+  if [[ "$status" == "running" ]]; then
+    if pid_is_running "$active_pid"; then
+      printf 'running\n'
+    else
+      printf 'interrupted\n'
+    fi
+    return 0
+  fi
+
+  printf 'incomplete\n'
 }

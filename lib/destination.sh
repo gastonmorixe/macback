@@ -361,11 +361,7 @@ select_backup_run_dir() {
     [[ -n "$run_dir" ]] || continue
     local label status_hint
     label="$(basename "$(dirname "$run_dir")")/$(basename "$run_dir")"
-    if [[ -f "$run_dir/meta/manifest.json" ]]; then
-      status_hint="complete"
-    else
-      status_hint="incomplete"
-    fi
+    status_hint="$(run_dir_status_hint "$run_dir")"
     dirs+=("$label|$status_hint|$run_dir")
   done < <(list_run_dirs /Volumes)
   dirs+=("Custom path")

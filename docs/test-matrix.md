@@ -7,6 +7,7 @@
 - Destination guard status passthrough
 - Destination guard rejects stale targets before the child starts
 - Destination pause/rebind flow for same-volume remounts
+- Backup speed profile selection and rclone flag generation
 - Filter generation
 - Template expansion
 - Restore candidate discovery

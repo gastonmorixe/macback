@@ -59,6 +59,14 @@ setup() {
   assert_output_contains "No issues found"
 }
 
+@test "doctor reports skipped fast profile verification without warning" {
+  printf 'skipped-speed-fast\n' > "$FIXTURE/meta/integrity/rclone-check.exit-code"
+  run bash "$CLI" doctor "$FIXTURE"
+  assert_success
+  assert_output_contains "skipped by Fast profile"
+  assert_output_contains "No issues found"
+}
+
 @test "doctor shows component status" {
   run bash "$CLI" doctor "$FIXTURE"
   assert_success
